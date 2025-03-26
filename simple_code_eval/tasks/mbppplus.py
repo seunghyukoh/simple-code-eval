@@ -39,8 +39,20 @@ class MBPPPlus(MBPP):
         prompt = docstring that includes one test
         """
         description = doc["prompt"]  # sanitized testset use "prompt" instead of "text"
-        test_example = doc["test_list"][0]
-        prompt = f'"""\n{description}\n{test_example}\n"""\n'
+        reference = "\n".join(doc["test_list"])
+
+        user_content = f"Here is your task: {description}\n\nYour code should pass these tests:\n\n```Python\n{reference}\n```\n\nLet's think step by step. Put your final answer at the end with\n\n[BEGIN]\n{{your_code}}\n[DONE]"
+        messages = [
+            {
+                "role": "system",
+                "content": "You are an expert Python programmer.",
+            },
+            *self.fewshot_examples,
+            {"role": "user", "content": user_content},
+        ]
+        prompt = self.apply_chat_template(
+            messages, tokenize=False, add_generation_prompt=True
+        )
         return prompt
 
     # NOTE(@ganler): MBPP+ extends the original MBPP jsonl data with a "test" field which
@@ -72,3 +84,12 @@ class MBPPPlus(MBPP):
             timeout=10.0,  # 10s timeout
         )
         return pass_at_k, results
+
+
+if __name__ == "__main__":
+    from transformers import AutoTokenizer
+
+    tokenizer = AutoTokenizer.from_pretrained("meta-llama/Llama-3.1-8B-Instruct")
+
+    task = MBPPPlus(apply_chat_template=tokenizer.apply_chat_template)
+    print(task.get_prompt(task.dataset["test"][0]))
