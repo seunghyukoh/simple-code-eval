@@ -154,14 +154,12 @@ def compute_code_eval(
 
         for future in as_completed(futures):
             result = future.result()
-            results[result["task_id"]].append((result["completion_id"], result))
+            results[result["task_id"]].append(result["passed"])
 
     total, correct = [], []
     for result in results.values():
-        result.sort()
-        passed = [r[1]["passed"] for r in result]
-        total.append(len(passed))
-        correct.append(sum(passed))
+        total.append(len(result))
+        correct.append(sum(result))
     total = np.array(total)
     correct = np.array(correct)
 
