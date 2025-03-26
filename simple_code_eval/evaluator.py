@@ -22,7 +22,7 @@ Once you have read this disclaimer and taken appropriate precautions, set the ar
 """
 
 
-class Evaluator:
+class CodeEvaluator:
     def __init__(self, allow_code_execution: bool = True):
         self.allow_code_execution = allow_code_execution
 
@@ -55,7 +55,7 @@ if __name__ == "__main__":
     task = tasks.get_task(task_name)
     dataset = task.get_dataset()
 
-    evaluator = Evaluator()
+    evaluator = CodeEvaluator()
 
     generations = [
         [task.get_solution(dataset[0])] * 2,
