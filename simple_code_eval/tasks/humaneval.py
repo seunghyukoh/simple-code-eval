@@ -60,6 +60,7 @@ class GeneralHumanEval(Task):
             ],
             requires_execution=True,
         )
+        raise NotImplementedError("HumanEval is not implemented")
         self.strip_prompt = strip_prompt
         self.k = k
         self.num_workers = num_workers
