@@ -25,7 +25,8 @@ Once you have read this disclaimer and taken appropriate precautions, set the ar
 class Evaluator:
     def __init__(self, args):
         self.args = args
-        self.allow_code_execution = args.allow_code_execution
+        # self.allow_code_execution = args.allow_code_execution
+        self.allow_code_execution = True
 
     def evaluate(self, task_name: str, generations: List[str], references: List[str]):
         """
@@ -33,7 +34,7 @@ class Evaluator:
 
         Args:
             task_name: Name of the task to evaluate
-            generations: List of generated code strings
+            generations: List of lists containing generated code strings
             references: List of reference code strings
 
         Returns:
@@ -47,6 +48,48 @@ class Evaluator:
         os.environ["TOKENIZERS_PARALLELISM"] = "false"
         if self.allow_code_execution and task.requires_execution:
             os.environ["HF_ALLOW_CODE_EVAL"] = "1"
-        print("Evaluating generations...")
-        results = task.process_results(generations, references)
-        return results
+        pass_at_k, results = task.process_results(generations, references)
+        return pass_at_k, results
+
+
+if __name__ == "__main__":
+    task_name = "mbpp"
+
+    evaluator = Evaluator(None)
+    generations = [
+        [
+            """
+def first_repeated_char(str1):
+    for index,c in enumerate(str1):
+        if str1[:index+1].count(c) > 1:
+            return c
+    return "None"
+"""
+        ],
+        [
+            """
+def reverse_words(s):
+    return ' '.join(reversed(s.split()))
+"""
+        ],
+    ]
+    references = [
+        "\n".join(
+            [
+                'assert first_repeated_char("abcabc") == "a"',
+                'assert first_repeated_char("abc") == "None"',
+                'assert first_repeated_char("123123") == "1"',
+            ]
+        ),
+        "\n".join(
+            [
+                'assert reverse_words("python program")==("program python")',
+                'assert reverse_words("java language")==("language java")',
+                'assert reverse_words("indian man")==("man indian")',
+            ]
+        ),
+    ]
+
+    pass_at_k, results = evaluator.evaluate(task_name, generations, references)
+    print(f"pass_at_k: {pass_at_k}")
+    print(f"results: {results}")

@@ -68,13 +68,15 @@ class Task(ABC):
         pass
 
     @abstractmethod
-    def process_results(self, generations, references):
+    def process_results(self, generations, references, num_workers=4):
         """Takes the list of LM generations and evaluates them against ground truth references,
         returning the metric for the generations as in {"metric_name": result}.
         :param generations: list(list(str))
             list of lists containing generations
         :param references: list(str)
             list of str containing refrences
+        :param num_workers: int
+            number of worker threads to use for parallel evaluation
         :return: dict[str: float]
         """
         pass

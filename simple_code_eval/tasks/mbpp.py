@@ -78,16 +78,17 @@ class MBPP(Task):
         generation = generation[len(prompt) :]
         return prompt + self._stop_at_stop_token(generation, self.stop_words)
 
-    def process_results(self, generations, references):
+    def process_results(self, generations, references, num_workers=4):
         """Takes the list of LM generations and evaluates them against ground truth references,
         returning the metric for the generations.
         :param generations: list(list(str))
             list of lists containing generations
         :param references: list(str)
             list of str containing refrences
+        :param num_workers: int
+            number of worker threads to use for parallel evaluation
         """
-        results, _ = compute_code_eval(
-            references=references,
-            predictions=generations,
+        pass_at_k, results = compute_code_eval(
+            references=references, predictions=generations, num_workers=num_workers
         )
-        return results
+        return pass_at_k, results
