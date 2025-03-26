@@ -9,6 +9,7 @@ import transformers
 from accelerate import Accelerator
 from simple_code_eval.arguments import EvalArguments
 from simple_code_eval.evaluator import Evaluator
+from simple_code_eval.generator import Generator
 from simple_code_eval.tasks import ALL_TASKS
 from transformers import (
     AutoModelForCausalLM,
@@ -248,178 +249,99 @@ def main():
         task_names = pattern_match(args.tasks.split(","), ALL_TASKS)
 
     accelerator = Accelerator()
-    if accelerator.is_main_process:
-        print(f"Selected Tasks: {task_names}")
 
-    results = {}
-    if args.load_generations_path:
-        # here we don't generate code but only evaluate previously computed generations
-        if accelerator.is_main_process:
-            print("evaluation only mode")
-        evaluator = Evaluator(accelerator, None, None, args)
-        for task in task_names:
-            results[task] = evaluator.evaluate(task)
+    # Initialize model and tokenizer
+    kwargs = {}
+    if args.use_auth_token:
+        kwargs["use_auth_token"] = True
+    if args.trust_remote_code:
+        kwargs["trust_remote_code"] = True
+    if args.revision:
+        kwargs["revision"] = args.revision
+
+    tokenizer = AutoTokenizer.from_pretrained(args.model, **kwargs)
+    if args.modeltype == "causal":
+        model = AutoModelForCausalLM.from_pretrained(
+            args.model,
+            **kwargs,
+            torch_dtype=torch.float16 if args.precision == "fp16" else torch.float32,
+            load_in_8bit=args.load_in_8bit,
+            load_in_4bit=args.load_in_4bit,
+            device_map="auto",
+            max_memory=get_gpus_max_memory(
+                args.max_memory_per_gpu, accelerator.num_processes
+            )
+            if args.max_memory_per_gpu
+            else None,
+        )
     else:
-        # here we generate code and save it (evaluation is optional but True by default)
-        dict_precisions = {
-            "fp32": torch.float32,
-            "fp16": torch.float16,
-            "bf16": torch.bfloat16,
-        }
-        if args.precision not in dict_precisions:
-            raise ValueError(
-                f"Non valid precision {args.precision}, choose from: fp16, fp32, bf16"
+        model = AutoModelForSeq2SeqLM.from_pretrained(
+            args.model,
+            **kwargs,
+            torch_dtype=torch.float16 if args.precision == "fp16" else torch.float32,
+            load_in_8bit=args.load_in_8bit,
+            load_in_4bit=args.load_in_4bit,
+            device_map="auto",
+            max_memory=get_gpus_max_memory(
+                args.max_memory_per_gpu, accelerator.num_processes
             )
+            if args.max_memory_per_gpu
+            else None,
+        )
 
-        model_kwargs = {
-            "revision": args.revision,
-            "trust_remote_code": args.trust_remote_code,
-            "token": args.use_auth_token,
-            "attn_implementation": "flash_attention_2",
-        }
-        if args.load_in_8bit:
-            print("Loading model in 8bit")
-            model_kwargs["load_in_8bit"] = args.load_in_8bit
-            model_kwargs["device_map"] = {"": accelerator.process_index}
-        elif args.load_in_4bit:
-            print("Loading model in 4bit")
-            model_kwargs["load_in_4bit"] = args.load_in_4bit
-            model_kwargs["torch_dtype"] = torch.float16
-            model_kwargs["bnb_4bit_compute_dtype"] = torch.float16
-            model_kwargs["device_map"] = {"": accelerator.process_index}
-        else:
-            print(f"Loading model in {args.precision}")
-            model_kwargs["torch_dtype"] = dict_precisions[args.precision]
+    # Load PEFT model if specified
+    if args.peft_model:
+        from peft import PeftModel
 
-            if args.max_memory_per_gpu:
-                if args.max_memory_per_gpu != "auto":
-                    model_kwargs["max_memory"] = get_gpus_max_memory(
-                        args.max_memory_per_gpu, accelerator.num_processes
-                    )
-                    model_kwargs["offload_folder"] = "offload"
-                else:
-                    model_kwargs["device_map"] = "auto"
-                    print("Loading model in auto mode")
+        model = PeftModel.from_pretrained(model, args.peft_model)
 
-        if args.modeltype == "causal":
-            model = AutoModelForCausalLM.from_pretrained(
-                args.model,
-                **model_kwargs,
-            )
-        elif args.modeltype == "seq2seq":
-            warnings.warn(
-                "Seq2Seq models have only been tested for HumanEvalPack & CodeT5+ models."
-            )
-            model = AutoModelForSeq2SeqLM.from_pretrained(
-                args.model,
-                **model_kwargs,
-            )
-        else:
-            raise ValueError(
-                f"Non valid modeltype {args.modeltype}, choose from: causal, seq2seq"
-            )
+    if tokenizer.pad_token is None:
+        tokenizer.pad_token = tokenizer.eos_token
 
-        if args.peft_model:
-            from peft import PeftModel  # dynamic import to avoid dependency on peft
+    # Initialize Generator and Evaluator
+    generator = Generator(accelerator, model, tokenizer, args)
+    evaluator = Evaluator(args)
 
-            model = PeftModel.from_pretrained(model, args.peft_model)
-            print("Loaded PEFT model. Merging...")
-            model.merge_and_unload()
-            print("Merge complete.")
+    # Process each task
+    for task_name in task_names:
+        print(f"\n{'='*50}")
+        print(f"Task: {task_name}")
+        print(f"{'='*50}\n")
 
-        if args.left_padding:
-            # left padding is required for some models like chatglm3-6b
-            tokenizer = AutoTokenizer.from_pretrained(
-                args.model,
-                revision=args.revision,
-                trust_remote_code=args.trust_remote_code,
-                token=args.use_auth_token,
-                padding_side="left",
-            )
-        else:
-            # used by default for most models
-            tokenizer = AutoTokenizer.from_pretrained(
-                args.model,
-                revision=args.revision,
-                trust_remote_code=args.trust_remote_code,
-                token=args.use_auth_token,
-                truncation_side="left",
-                padding_side="right",
-            )
-        if not tokenizer.eos_token:
-            if tokenizer.bos_token:
-                tokenizer.eos_token = tokenizer.bos_token
-                print("bos_token used as eos_token")
-            else:
-                raise ValueError("No eos_token or bos_token found")
-        try:
-            tokenizer.pad_token = tokenizer.eos_token
+        # Generate code if not loading from file
+        if not args.load_generations_path:
+            generations, references = generator.generate_text(task_name)
 
-        # Some models like CodeGeeX2 have pad_token as a read-only property
-        except AttributeError:
-            print("Not setting pad_token to eos_token")
-            pass
-        WIZARD_LLAMA_MODELS = [
-            "WizardLM/WizardCoder-Python-34B-V1.0",
-            "WizardLM/WizardCoder-34B-V1.0",
-            "WizardLM/WizardCoder-Python-13B-V1.0",
-        ]
-        if args.model in WIZARD_LLAMA_MODELS:
-            tokenizer.bos_token = "<s>"
-            tokenizer.bos_token_id = 1
-            print("Changing bos_token to <s>")
-
-        evaluator = Evaluator(accelerator, model, tokenizer, args)
-
-        if args.load_generations_intermediate_paths and len(
-            args.load_generations_intermediate_paths
-        ) != len(task_names):
-            raise ValueError(
-                "If passing --load_generations_intermediate_paths, \
-                must pass equal number of files as number of tasks"
-            )
-
-        for idx, task in enumerate(task_names):
-            intermediate_generations = None
-            if args.load_generations_intermediate_paths:
-                with open(args.load_generations_intermediate_paths[idx], "r") as f_in:
-                    # intermediate_generations: list[list[str | None]] of len n_tasks
-                    # where list[i] = generated codes or empty
-                    intermediate_generations = json.load(f_in)
-
-            if args.generation_only:
-                if accelerator.is_main_process:
-                    print("generation mode only")
-                generations, references = evaluator.generate_text(
-                    task, intermediate_generations=intermediate_generations
-                )
-                if accelerator.is_main_process:
-                    save_generations_path = (
-                        f"{os.path.splitext(args.save_generations_path)[0]}_{task}.json"
-                    )
-                    save_references_path = (
-                        f"{os.path.splitext(args.save_references_path)[0]}_{task}.json"
-                    )
-                    evaluator.save_json_files(
+            # Save generations and references if requested
+            if accelerator.is_main_process:
+                if args.save_generations:
+                    save_generations_path = f"{os.path.splitext(args.save_generations_path)[0]}_{task_name}.json"
+                    generator.save_json_files(
                         generations,
                         references,
                         save_generations_path,
-                        save_references_path,
+                        f"{os.path.splitext(args.save_references_path)[0]}_{task_name}.json"
+                        if args.save_references
+                        else None,
                     )
-            else:
-                results[task] = evaluator.evaluate(
-                    task, intermediate_generations=intermediate_generations
-                )
+        else:
+            # Load generations from file
+            with open(args.load_generations_path, "r") as f:
+                generations = json.load(f)
+            references = None  # References will be loaded by the task
 
-    # Save all args to config
-    results["config"] = vars(args)
-    if not args.generation_only:
-        dumped = json.dumps(results, indent=2)
-        if accelerator.is_main_process:
-            print(dumped)
+        # Evaluate if not generation only
+        if not args.generation_only:
+            results = evaluator.evaluate(task_name, generations, references)
 
-        with open(args.metric_output_path, "w") as f:
-            f.write(dumped)
+            # Save results
+            if accelerator.is_main_process:
+                print(results)
+
+                with open(args.metric_output_path, "w") as f:
+                    json.dump({task_name: results, "config": vars(args)}, f, indent=2)
+                    f.write("\n")
+                print(f"Results saved to {args.metric_output_path}")
 
 
 if __name__ == "__main__":

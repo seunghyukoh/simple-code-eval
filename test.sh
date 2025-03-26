@@ -1,7 +1,7 @@
 accelerate launch main.py \
     --model meta-llama/Llama-3.2-1B-Instruct \
     --tasks mbpp \
-    --limit 5 \
+    --limit 10 \
     --max_length_generation 512 \
     --temperature 0.0 \
     --do_sample False \
@@ -9,6 +9,7 @@ accelerate launch main.py \
     --batch_size 1 \
     --precision bf16 \
     --allow_code_execution \
+    --metric_output_path ./output/mbpp/llama-3.2-1b-instruct/results.json \
     --save_generations \
-    --save_generations_path ./output/mbpp/llama-3.2-1b-instruct-5/generations.json \
+    --save_generations_path ./output/mbpp/llama-3.2-1b-instruct/generations.json \
     --eos "<|eot_id|>"
