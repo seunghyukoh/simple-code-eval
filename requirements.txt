@@ -1,10 +1,11 @@
-torch==2.5.1
-transformers==4.47.1
-tokenizers==0.21.0
-vllm==0.6.6.post1
-accelerate==1.1.1
-datasets==3.1.0
-flash-attn==2.7.0.post2
+torch>=2.5.1
+transformers>=4.47.1
+tokenizers>=0.21.0
+vllm>=0.6.6.post1
+accelerate>=1.1.1
+datasets>=3.1.0
+flash-attn>=2.7.0.post2
 ruff>=0.8.0
 python-dotenv>=1.0.1
+pytest>=7.0.0
 
