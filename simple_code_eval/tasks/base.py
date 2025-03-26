@@ -58,6 +58,14 @@ class Task(ABC):
         pass
 
     @abstractmethod
+    def get_solution(self, doc):
+        """Builds the solution for the doc.
+        :param doc: dict[str: str]
+            sample from the test dataset
+        """
+        pass
+
+    @abstractmethod
     def postprocess_generation(self, generation, idx):
         """Defines the postprocessing for a LM generation.
         :param generation: str

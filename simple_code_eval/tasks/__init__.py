@@ -1,10 +1,15 @@
 import inspect
 from pprint import pprint
 
-from . import mbpp
+from . import humaneval, mbpp, mbppplus
+from .base import Task
+
+__all__ = ["Task"]
 
 TASK_REGISTRY = {
     "mbpp": mbpp.MBPP,
+    "mbppplus": mbppplus.MBPPPlus,
+    **humaneval.create_all_tasks(),
 }
 
 ALL_TASKS = sorted(list(TASK_REGISTRY))

@@ -67,6 +67,10 @@ class MBPP(Task):
         """Builds the reference solution for the doc (sample from the test dataset)."""
         return "\n".join(doc["test_list"])
 
+    def get_solution(self, doc):
+        """Builds the solution for the doc."""
+        return doc["code"]
+
     def postprocess_generation(self, generation, idx):
         """Defines the postprocessing for a LM generation.
         :param generation: str
