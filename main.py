@@ -209,7 +209,16 @@ def parse_args():
         action="store_true",
         help="Don't run generation but benchmark groundtruth (useful for debugging)",
     )
-    return parser.parse_args()
+    args = parser.parse_args()
+
+    assert not args.save_generations or (
+        args.save_generations and args.save_generations_path is not None
+    ), "save_generations_path is required when save_generations is True"
+    assert not args.save_references or (
+        args.save_references and args.save_references_path is not None
+    ), "save_references_path is required when save_references is True"
+
+    return args
 
 
 def pattern_match(patterns, source_list):
@@ -388,7 +397,9 @@ def main():
                     save_generations_path = (
                         f"{os.path.splitext(args.save_generations_path)[0]}_{task}.json"
                     )
-                    save_references_path = f"references_{task}.json"
+                    save_references_path = (
+                        f"{os.path.splitext(args.save_references_path)[0]}_{task}.json"
+                    )
                     evaluator.save_json_files(
                         generations,
                         references,
