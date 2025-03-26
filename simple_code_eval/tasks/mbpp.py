@@ -146,16 +146,24 @@ class MBPP(Task):
         """Builds the solution for the doc."""
         return doc["code"]
 
-    def postprocess_generation(self, generation, idx):
+    def postprocess_generation(self, generation):
         """Defines the postprocessing for a LM generation.
         :param generation: str
             code generation from LM
         :param idx: int
             index of doc in the dataset to which the generation belongs
         """
-        prompt = self.get_prompt(self.dataset["test"][idx])
-        generation = generation[len(prompt) :]
-        return prompt + self._stop_at_stop_token(generation, self.stop_words)
+        # Extract all strings between [BEGIN] and [DONE]
+        parts = generation.split("[BEGIN]")[
+            1:
+        ]  # Split and remove text before first [BEGIN]
+        code_blocks = [
+            p.split("[DONE]")[0].strip() for p in parts
+        ]  # Get text before [DONE]
+
+        # Return the last code block if any exist, otherwise return empty string
+        final_code = code_blocks[-1] if code_blocks else ""
+        return final_code
 
     def process_results(self, generations, references, num_workers=4):
         """Takes the list of LM generations and evaluates them against ground truth references,
@@ -179,4 +187,5 @@ if __name__ == "__main__":
     tokenizer = AutoTokenizer.from_pretrained("meta-llama/Llama-3.1-8B-Instruct")
 
     task = MBPP(apply_chat_template=tokenizer.apply_chat_template)
-    print(task.get_prompt(task.dataset["test"][0]))
+    # print(task.get_prompt(task.dataset["test"][0]))
+    print(task.postprocess_generation(task.get_prompt(task.dataset["test"][0])))
