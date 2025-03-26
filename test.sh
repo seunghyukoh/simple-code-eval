@@ -10,4 +10,5 @@ accelerate launch main.py \
     --precision bf16 \
     --allow_code_execution \
     --save_generations \
-    --save_generations_path ./output/mbpp/llama-3.2-1b-instruct-5/generations.json
+    --save_generations_path ./output/mbpp/llama-3.2-1b-instruct-5/generations.json \
+    --eos "<|eot_id|>"
