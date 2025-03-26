@@ -20,6 +20,8 @@ import itertools
 import os
 from collections import Counter, defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from dataclasses import dataclass
+from typing import Dict, List, Union
 
 import numpy as np
 
@@ -126,11 +128,34 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE."""
 
 
-def compute_code_eval(
-    predictions, references, k=[1, 10, 100], num_workers=4, timeout=3.0
-):
-    """Returns the scores"""
+@dataclass
+class Result:
+    """Detailed result of a code evaluation."""
 
+    passed: bool
+    result: str
+    completion_id: int
+    task_id: int
+
+
+def compute_code_eval(
+    predictions,
+    references,
+    k=[1, 10, 100],
+    num_workers=4,
+    timeout=3.0,
+    simple_result: bool = True,
+):
+    """Returns the scores
+
+    Args:
+        predictions: list of candidates to evaluate
+        references: list of test cases
+        k: list of k values for pass@k calculation
+        num_workers: number of worker threads
+        timeout: timeout for each evaluation
+        simple_result: if True, returns only boolean results. If False, returns detailed Result objects.
+    """
     if os.getenv("HF_ALLOW_CODE_EVAL", 0) != "1":
         raise ValueError(_WARNING)
 
@@ -154,12 +179,26 @@ def compute_code_eval(
 
         for future in as_completed(futures):
             result = future.result()
-            results[result["task_id"]].append(result["passed"])
+            if simple_result:
+                results[result["task_id"]].append(result["passed"])
+            else:
+                results[result["task_id"]].append(
+                    Result(
+                        passed=result["passed"],
+                        result=result["result"],
+                        completion_id=result["completion_id"],
+                        task_id=result["task_id"],
+                    )
+                )
 
     total, correct = [], []
     for result in results.values():
-        total.append(len(result))
-        correct.append(sum(result))
+        if simple_result:
+            total.append(len(result))
+            correct.append(sum(result))
+        else:
+            total.append(len(result))
+            correct.append(sum(r.passed for r in result))
     total = np.array(total)
     correct = np.array(correct)
 
