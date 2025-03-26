@@ -1,0 +1,12 @@
+accelerate launch main.py \
+    --model meta-llama/Llama-3.2-1B-Instruct \
+    --tasks mbpp \
+    --limit 100 \
+    --max_length_generation 512 \
+    --temperature 0.0 \
+    --do_sample False \
+    --n_samples 1 \
+    --batch_size 1 \
+    --precision bf16 \
+    --allow_code_execution \
+    --save_generations
